@@ -1,0 +1,382 @@
+---
+title: "ADNI Project"
+author: "Edmund Qiao"
+date: "March 4, 2018"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Call relevant libraries
+```{r}
+library(reshape2)
+library(rlist)
+library(qqman)
+library(manhattanly)
+library(plyr)
+```
+
+
+Read in file
+
+Remove all items in wd before each run. rm(list = ls())
+
+```{r}
+alz = read.csv("D:/ADNI/bivariate_fix.csv")
+
+#rm(list = ls())
+
+```
+
+Replace all the blanks in the .csv with NA values
+
+```{r}
+alz[alz==""] = NA
+```
+
+Replace the APOE levels with corresponding phenotype
+
+```{r}
+for (i in 1:length(alz)) {
+  if (is.na(alz[7,i]) | alz[7,i] == -1) {
+    #Do nothing
+  }
+  else if (alz[7,i] == 44) {
+    alz[7,i] = 2
+  }
+  else if (alz[7,i] %in% c(24,34,42)) {
+    alz[7,i] = 1
+  }
+  else if (alz[7,i] %in% c(22,23,33,32)) {
+    alz[7,i] = 0
+  }
+}
+```
+
+Recode the Diagnosis
+
+```{r}
+for (i in 1:ncol(alz)) {
+  if (is.na(alz[4,i])) {
+    #do nothing
+  }
+  else if (alz[4,i] == 3) {
+    alz[4,i] = 0
+  }
+  else if (alz[4,i] == 2) {
+    alz[4,i] = 1
+  }
+}
+```
+
+Transpose the table and write to .csv. Some manual work here with .csv file. This included deleting the first row in the table labeled "V1, V2, V3..."
+
+```{r}
+alz = t(alz)
+alz = as.data.frame(alz)
+write.csv(alz, "single_snps_alz_transpose(2).csv")
+```
+
+Read in the transposed table to run glm. Delete the first 3 rows of the new table (these are useful but cannot be run with the glm). Using excel, make sure to delete any columns with 'NA' in any of the 'APOE', 'Diagnosis', or 'Gender' columns.
+
+```{r}
+alz = read.csv("single_snps_alz_transpose(2).csv", stringsAsFactors = FALSE)
+alz = alz[-1,]
+alz = alz[-1,]
+alz = alz[-1,]
+alz = alz[-1,] #x4
+
+```
+
+Create a counter variables and list variables to hold significant values. Missingvalues generates a list of values that cannot be run due to NA values, these will include the index of such missing values so our final list can be adjusted with the correct amount of values. Sigpos will hold the positions of any values that come up with p < 0.05. Missing1/2value will hold any values that have a missing allele corresponding to the number in the variable. test_1 and test_2 will catch values that only have 1 alt allele present in the bivariate alts because of NA values. 
+
+```{r}
+test = list()
+test_1 = list()
+test_2 = list()
+newlist = list()
+newlist_1 = list()
+newlist_2 = list()
+missingvalues = c()
+counter = 1
+sigpos = c()
+sigposcounter = 1
+missing2valuecounter = 1
+missing1valuecounter = 1
+missing2value = c()
+missing1value = c()
+allelefreqs = c()
+allelecounter = 1
+  
+```
+
+Loop through the each position. Table with positions starts at 9. For the samples with alleles >2, some manual adjustment to code necessary. (Only 2 pos had values with more than 2 alleles). It is easier to do some work within excel. Sort/filter by the number of alt alleles and run the corresponding code below. The code block below this is geared toward a .csv file with only 2 alt alleles. 
+
+```{r}
+
+for ( i in 9:ncol(alz)) {
+  
+  oneexists = FALSE
+  zeroexists = FALSE
+  twoexists=FALSE
+  
+  countallele1 = 0.0
+  countallele2 = 0.0
+  
+  
+  #Check to see which alleles are present in a given pos
+  
+  for (j in 1:length(alz[,i])) {
+    if (!is.na(alz[j,i])) {
+      if(alz[j,i] == 1){
+        oneexists = TRUE
+        countallele1 = countallele1 + 1
+      }else if(alz[j,i] == 0){
+        zeroexists = TRUE
+      }
+      else if (alz[j,i] == 2) {
+        twoexists = TRUE
+        countallele2 = countallele2 + 1
+      }
+    }
+  }
+  
+  countallele1 = countallele1 / nrow(alz)
+  countallele2 = countallele2 / nrow(alz)
+
+  allelefreqs[allelecounter] = countallele1
+  allelefreqs[allelecounter+1] = countallele2
+  
+  
+
+  
+  #Depending on which alleles are present, run the corresponding glm call.
+  #This one is for bivariate alt alleles (2 alts)
+  #The alz.csv file would contain only the calls that have 2 alt alleles
+  
+  if(oneexists & zeroexists & !twoexists) {
+    
+    missing2value[missing2valuecounter] = i 
+    missing2valuecounter = missing2valuecounter + 1
+    
+    model = glm(alz$ADNI_diagnosis ~ alz$Gender
+                + as.factor(alz$APOE) + alz$Age + alz[,i],
+                family="binomial", na.action = na.omit )
+    
+    #Create dataframe with the pvalue of the pos
+    test_1 = data.frame(summary(model)$coef[6,'Pr(>|z|)'])
+    
+    if (summary(model)$coef[6,'Pr(>|z|)'] < 0.05) {
+      sigpos[sigposcounter] = i
+      sigposcounter = sigposcounter + 1
+    }
+    
+    #Append the new pvalue to growing list 
+    newlist_1 = list.append(newlist_1, test_1)
+    
+    #Delete the calculated 0 allele freq
+    allelefreqs = allelefreqs[-(allelecounter+1)]
+    allelecounter = allelecounter - 1
+    
+    #Repeat for other conditions
+    }else if(!oneexists & zeroexists & twoexists) {
+      
+      missing1value[missing1valuecounter] = i 
+      missing1valuecounter = missing1valuecounter + 1
+      
+      model = glm(alz$ADNI_diagnosis ~ alz$Gender
+                  + as.factor(alz$APOE) + alz$Age + alz[,i],
+                  family="binomial", na.action = na.omit )
+      test_2= data.frame(summary(model)$coef[6,'Pr(>|z|)'])
+      
+      if (summary(model)$coef[6,'Pr(>|z|)'] < 0.05) {
+        sigpos[sigposcounter] = i
+        sigposcounter = sigposcounter + 1
+      }
+      newlist_2 = list.append(newlist_2, test_2)
+
+      allelefreqs = allelefreqs[-(allelecounter)]
+      allelecounter = allelecounter - 1
+      
+      }else if(oneexists & zeroexists & twoexists) {
+        
+        model = glm(alz$ADNI_diagnosis ~ alz$Gender
+                    + as.factor(alz$APOE) + alz$Age + alz[,i],
+                    family="binomial", na.action = na.omit )
+        test = data.frame(summary(model)$coef[6,'Pr(>|z|)'],
+                          summary(model)$coef[7,'Pr(>|z|)'])
+        
+        if (summary(model)$coef[6,'Pr(>|z|)'] < 0.05) {
+          sigpos[sigposcounter] = i
+          sigposcounter = sigposcounter + 1
+        }
+        newlist = list.append(newlist, test)
+      }
+
+   else {
+      missingvalues[counter] = i
+      counter = counter + 1
+    }
+  allelecounter = allelecounter + 2
+}
+```
+
+This code block is for a .csv file with only one alt allele
+
+```{r}
+for ( i in 9:ncol(alz)) {
+  
+  oneexists = FALSE
+  zeroexists = FALSE
+
+  for (j in 1:length(alz[,i])) {
+    if (!is.na(alz[j,i])) {
+      if(alz[j,i] == 1){
+        oneexists = TRUE
+      }else if(alz[j,i] == 0){
+        zeroexists = TRUE
+      }
+    }
+  }
+  
+  #Only run if both alleles are present, otherwise glm will exit
+  if(oneexists & zeroexists) {
+    
+    model = glm(alz$ADNI_diagnosis ~ alz$Gender
+                + as.factor(alz$APOE) + alz$Age + alz[,i],
+                family="binomial", na.action = na.omit )
+    
+    test = data.frame(summary(model)$coef[6,'Pr(>|z|)'])
+    
+    if (summary(model)$coef[6,'Pr(>|z|)'] < 0.05) {
+      sigpos[sigposcounter] = i
+      sigposcounter = sigposcounter + 1
+    }
+    
+    newlist = list.append(newlist, test)
+    
+    }
+    
+   else {
+      missingvalues[counter] = i
+      counter = counter + 1
+   }
+  
+  if (i %% 100 == 0) {
+    
+    print(i)
+    
+  }
+
+}
+```
+
+This unwraps the dataframes into a more readable format
+
+```{r}
+df = list.cbind(newlist)
+
+if (missing1valuecounter > 1) {
+  df2 = list.cbind(newlist_2)
+
+}
+if (missing2valuecounter > 1) {
+  df1 = list.cbind(newlist_1)
+
+}
+```
+
+The new dataframe needs to be relabeled with the appropriate position columns. We will also include the ref/alt data. Remove any missing values from the glm model summary.
+
+```{r}
+
+filtered_table = read.csv('D:/ADNI/single_snps_alz_transpose(2).csv')
+
+#Generate filtered tables 1 and 2
+
+if(missing2valuecounter > 1) {
+  filtered_table1 = filtered_table[1:4,missing2value]
+  columnnames1 = as.data.frame(filtered_table1)
+  columnnames1 = t(columnnames1)
+  colnames(columnnames1) = c('Pos', 'Ref', 'Alt', 'Freq')
+}
+
+if(missing1valuecounter > 1) {
+  filtered_table2 = filtered_table[1:4,missing1value]
+  columnnames2 = as.data.frame(filtered_table2)
+  columnnames2 = t(columnnames2)
+  colnames(columnnames2) = c('Pos', 'Ref', 'Alt', 'Freq')
+}
+#Remove any missing values with both 1/2 allele missing 
+#Combine the individual missing values and remove those as well
+
+missingvalues = rbind(missing1value,missing2value,missingvalues)
+
+if(!is.na(missingvalues)) {
+  filtered_table = filtered_table[1:4,-missingvalues]
+} 
+
+columnnames = filtered_table[1:4, 9:ncol(filtered_table)]
+columnnames = t(columnnames)
+colnames(columnnames) = c('Pos', 'Ref', 'Alt', 'Freq')
+```
+
+It gets tricky when there is greater than one alt allele. The code below will adjust for 2 alt alleles, but anything more might need some manual revision. This is fine with smaller datasets like the one we're working with, but with larger genomes we might want to revisit this. 
+
+```{r}
+
+doubletable = rbind(columnnames,columnnames)
+
+k = 1
+for (i in 1:nrow(columnnames)) {
+  doubletable[k,] = columnnames[i,]
+  doubletable[k+1,] = columnnames[i,]
+  
+  #Adjust the freq for bivariate
+  doubletable[k,4] = allelefreqs[k]
+  doubletable[k+1,4] = allelefreqs[k+1]
+  
+  
+  k = k +2
+}
+
+doubletable = as.data.frame(doubletable, stringsAsFactors = FALSE)
+```
+
+Bind our data with our pvalues. This gives a final table with pvalue for the first allele at first duplicate and pvalue for the second allele at the second duplicate. 
+
+```{r}
+
+if (exists('doubletable')) {
+  finaltable = cbind(t(df), doubletable)
+  
+  if(exists('df1')) {
+    if(!is.na(df1)) {
+    part1 = cbind(t(df1), as.data.frame(columnnames1))
+    finaltable = rbind.fill(as.data.frame(part1), finaltable)
+   }
+  }
+
+  if(exists('df2')) {
+    if(!is.na(df2)) {
+    part2 = cbind(t(df2), as.data.frame(columnnames2))
+    finaltable = rbind.fill(as.data.frame(part2), finaltable)
+    }
+  }
+} else{
+  
+  finaltable = cbind(t(df), as.data.frame(columnnames))
+  
+}
+  
+
+
+
+write.csv(finaltable, 'single_snp_pvalues2.csv')
+
+```
+
