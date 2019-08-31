@@ -21,7 +21,7 @@ library(plyr)
 ```
 
 
-Read in file of interest. 
+Read in file of interest. Either 'snps_single.csv' or 'bivariate_t.csv'
 
 Remove all items in wd before each run. rm(list = ls())
 
