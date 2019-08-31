@@ -21,14 +21,16 @@ library(plyr)
 ```
 
 
-Read in file
+Read in file of interest. 
 
 Remove all items in wd before each run. rm(list = ls())
 
 ```{r}
-alz = read.csv("D:/ADNI/bivariate_fix.csv")
+rm(list = ls())
 
-#rm(list = ls())
+alz = read.csv(paste(getwd(),"/bivariate_t.csv", sep=''))
+
+
 
 ```
 
@@ -73,26 +75,26 @@ for (i in 1:ncol(alz)) {
 }
 ```
 
-Transpose the table and write to .csv. Some manual work here with .csv file. This included deleting the first row in the table labeled "V1, V2, V3..."
+Transpose the table and write to .csv. 
 
 ```{r}
 alz = t(alz)
 alz = as.data.frame(alz)
-write.csv(alz, "single_snps_alz_transpose(2).csv")
+write.csv(alz, "bivariate_snps_alz_transpose(2).csv")
 ```
 
-Read in the transposed table to run glm. Delete the first 3 rows of the new table (these are useful but cannot be run with the glm). Using excel, make sure to delete any columns with 'NA' in any of the 'APOE', 'Diagnosis', or 'Gender' columns.
+Read in the transposed table to run glm. Delete the first 3 (4) rows of the new table (these are useful but cannot be run with the glm). Using excel, make sure to delete any columns with 'NA' in any of the 'APOE', 'Diagnosis', or 'Gender' columns.
 
 ```{r}
-alz = read.csv("single_snps_alz_transpose(2).csv", stringsAsFactors = FALSE)
+alz = read.csv(paste(getwd(),"/bivariate_snps_alz_transpose(2).csv",sep=''), stringsAsFactors = FALSE, skip = 1)
 alz = alz[-1,]
 alz = alz[-1,]
 alz = alz[-1,]
-alz = alz[-1,] #x4
+
 
 ```
 
-Create a counter variables and list variables to hold significant values. Missingvalues generates a list of values that cannot be run due to NA values, these will include the index of such missing values so our final list can be adjusted with the correct amount of values. Sigpos will hold the positions of any values that come up with p < 0.05. Missing1/2value will hold any values that have a missing allele corresponding to the number in the variable. test_1 and test_2 will catch values that only have 1 alt allele present in the bivariate alts because of NA values. 
+Create counter variables and list variables to hold significant values. Missingvalues generates a list of values that cannot be run due to NA values, these will include the index of such missing values so our final list can be adjusted with the correct amount of values. Sigpos will hold the positions of any values that come up with p < 0.05. Missing1/2value will hold any values that have a missing allele corresponding to the number in the variable. test_1 and test_2 will catch values that only have 1 alt allele present in the bivariate alts because of NA values. 
 
 ```{r}
 test = list()
@@ -114,9 +116,13 @@ allelecounter = 1
   
 ```
 
+This is for positions with more than 1 alt allele. If only 1 alt allele, skip this block and go to the next one. 
+
 Loop through the each position. Table with positions starts at 9. For the samples with alleles >2, some manual adjustment to code necessary. (Only 2 pos had values with more than 2 alleles). It is easier to do some work within excel. Sort/filter by the number of alt alleles and run the corresponding code below. The code block below this is geared toward a .csv file with only 2 alt alleles. 
 
 ```{r}
+
+alz = na.omit(alz)
 
 for ( i in 9:ncol(alz)) {
   
@@ -151,8 +157,6 @@ for ( i in 9:ncol(alz)) {
   allelefreqs[allelecounter] = countallele1
   allelefreqs[allelecounter+1] = countallele2
   
-  
-
   
   #Depending on which alleles are present, run the corresponding glm call.
   #This one is for bivariate alt alleles (2 alts)
@@ -222,12 +226,19 @@ for ( i in 9:ncol(alz)) {
       counter = counter + 1
     }
   allelecounter = allelecounter + 2
+  
+  
 }
 ```
 
 This code block is for a .csv file with only one alt allele
 
 ```{r}
+##Some rows only have 1 instance of alt allele, associated with a NA in a predictor variable
+##Removing these
+
+alz = na.omit(alz)
+
 for ( i in 9:ncol(alz)) {
   
   oneexists = FALSE
@@ -241,8 +252,9 @@ for ( i in 9:ncol(alz)) {
         zeroexists = TRUE
       }
     }
+
   }
-  
+
   #Only run if both alleles are present, otherwise glm will exit
   if(oneexists & zeroexists) {
     
@@ -271,6 +283,8 @@ for ( i in 9:ncol(alz)) {
     print(i)
     
   }
+  
+  
 
 }
 ```
@@ -280,11 +294,11 @@ This unwraps the dataframes into a more readable format
 ```{r}
 df = list.cbind(newlist)
 
-if (missing1valuecounter > 1) {
+if (missing1valuecounter > 0) {
   df2 = list.cbind(newlist_2)
 
 }
-if (missing2valuecounter > 1) {
+if (missing2valuecounter > 0) {
   df1 = list.cbind(newlist_1)
 
 }
@@ -294,18 +308,18 @@ The new dataframe needs to be relabeled with the appropriate position columns. W
 
 ```{r}
 
-filtered_table = read.csv('D:/ADNI/single_snps_alz_transpose(2).csv')
+filtered_table = read.csv(paste(getwd(),'/bivariate_fix.csv', sep=''), skip = 1)
 
 #Generate filtered tables 1 and 2
 
-if(missing2valuecounter > 1) {
+if(missing2valuecounter > 0) {
   filtered_table1 = filtered_table[1:4,missing2value]
   columnnames1 = as.data.frame(filtered_table1)
   columnnames1 = t(columnnames1)
   colnames(columnnames1) = c('Pos', 'Ref', 'Alt', 'Freq')
 }
 
-if(missing1valuecounter > 1) {
+if(missing1valuecounter > 0) {
   filtered_table2 = filtered_table[1:4,missing1value]
   columnnames2 = as.data.frame(filtered_table2)
   columnnames2 = t(columnnames2)
@@ -316,16 +330,18 @@ if(missing1valuecounter > 1) {
 
 missingvalues = rbind(missing1value,missing2value,missingvalues)
 
-if(!is.na(missingvalues)) {
+if(!is.na(missingvalues[1])) {
   filtered_table = filtered_table[1:4,-missingvalues]
 } 
 
 columnnames = filtered_table[1:4, 9:ncol(filtered_table)]
 columnnames = t(columnnames)
 colnames(columnnames) = c('Pos', 'Ref', 'Alt', 'Freq')
+
+
 ```
 
-It gets tricky when there is greater than one alt allele. The code below will adjust for 2 alt alleles, but anything more might need some manual revision. This is fine with smaller datasets like the one we're working with, but with larger genomes we might want to revisit this. 
+It gets tricky when there is greater than one alt allele. The code below will adjust for 2 alt alleles, but anything more might need some manual revision. This is fine with smaller datasets like the one we're working with, but with larger genomes we might want to revisit this. Do not run if only one allele.
 
 ```{r}
 
@@ -352,17 +368,18 @@ Bind our data with our pvalues. This gives a final table with pvalue for the fir
 ```{r}
 
 if (exists('doubletable')) {
+  
   finaltable = cbind(t(df), doubletable)
   
   if(exists('df1')) {
-    if(!is.na(df1)) {
+    if(!is.null(df1)) {
     part1 = cbind(t(df1), as.data.frame(columnnames1))
     finaltable = rbind.fill(as.data.frame(part1), finaltable)
    }
   }
 
   if(exists('df2')) {
-    if(!is.na(df2)) {
+    if(!is.null(df2)) {
     part2 = cbind(t(df2), as.data.frame(columnnames2))
     finaltable = rbind.fill(as.data.frame(part2), finaltable)
     }
@@ -376,7 +393,7 @@ if (exists('doubletable')) {
 
 
 
-write.csv(finaltable, 'single_snp_pvalues2.csv')
+write.csv(finaltable, 'bivariate_snp_pvalues2.csv')
 
 ```
 
