@@ -1,6 +1,6 @@
 # ADNI
 
-##**Code Markdown.rmd** : this is the annotated R script in markdown format
+##**Code Markdown.rmd** : this is the annotated R script in markdown format /n
 ##**alz_table.csv** : this is the table from the ADNI database containing mitochondrial sequencing data, predictor variables, alt/ref alleles, and instances of SNPs
 ##**bivariate_snp_pvalues2.csv** output file with p-values for SNPs with more than one alt allele
 ##**bivariate_snp_alz_transpose(2).csv** file made using Code Markdown.rmd for running glm
